@@ -1,6 +1,6 @@
 import get_data as gd
-
-gd.datascrape.
+### order of data refresh 
+gd.datascrape
 
 gd.scrapeexp
 
