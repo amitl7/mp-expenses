@@ -13,7 +13,7 @@ import os
 
 def get_mp_info():
     
-    with open('MPs.html', 'r') as html_file:
+    with open('/webpages/MPs.html', 'r') as html_file:
         content = html_file.read()
         
         
