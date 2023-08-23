@@ -92,3 +92,7 @@ def update_table(click_data):
 # Run the application
 if __name__ == '__main__':
     app.run_server(debug=True)
+
+    def test():
+        pass
+    
