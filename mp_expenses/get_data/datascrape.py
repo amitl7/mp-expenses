@@ -11,9 +11,13 @@ import pandas as pd
 import urllib.request
 import os
 
+current_dic = os.getcwd()
+project_dic = current_dic + '/'
+webpages = project_dic+'/webpages/MPs.html'
+
 def get_mp_info():
     
-    with open('/webpages/MPs.html', 'r') as html_file:
+    with open(webpages, 'r') as html_file:
         content = html_file.read()
         
         
@@ -82,18 +86,19 @@ def get_mp_info():
         df['party_group'] = df['party'].map(dict_party)
         
         #save data
-        df.to_csv('datasets/mp_map.csv', index = False)
+        df.to_csv(project_dic+'/datasets/mp_map.csv', index = False)
         print(df.head())
         print ('saved mp_map')
         
         weblinks = pd.DataFrame(weblink)
-        weblinks.to_csv('datasets/weblinks.csv',index = False)
+        weblinks.to_csv(project_dic+'/datasets/weblinks.csv',index = False)
         print('saved weblinks csv')
         #print(df)
 
 
-def get_html(df):
-        
+def get_html():
+    df = pd.read_csv(project_dic+'/datasets/weblinks.csv')
+
     for index, row in df.iterrows():
         name = row['name']
         webpage= row['expenses_link']
@@ -109,10 +114,14 @@ def get_html(df):
 
 #constants
 link = 'https://www.parallelparliament.co.uk'
-mp_exp_html = '/datasets/mp_expense_claim/'
-mp_weblinks = pd.read_csv('datasets/weblinks.csv')
+mp_exp_html = project_dic+'/datasets/mp_expense_claim/'
+#
 
 #run fuctions 
+def main():
+    get_mp_info() 
 
-#get_html(mp_weblinks)
-get_mp_info()    
+    get_html()
+    
+
+main()
