@@ -15,6 +15,8 @@ current_dic = os.getcwd()
 project_dic = current_dic + '/'
 webpages = project_dic+'/webpages/MPs.html'
 
+print(webpages)
+
 def get_mp_info():
     
     with open(webpages, 'r') as html_file:
@@ -124,4 +126,3 @@ def main():
     get_html()
     
 
-main()
