@@ -55,7 +55,7 @@ def get_expenses(filename, classname):
                     claims[key].append(None)
                    
     df = pd.DataFrame(claims)
-    df.date = pd.to_datetime(df.date)
+    df.date = pd.to_datetime(df.date, errors='ignore')
     
     try:
         
@@ -94,30 +94,13 @@ def create_csv(scrape1,scrape2):
         df1 = get_expenses(f,scrape2 )
         
         frames = [df,df1]
-        alldata = pd.concat(frames).sort_values(by='date', ascending=False)
+        alldata = pd.concat(frames)#.sort_values( ascending=False) #by='date',
+
+        alldata['date'] = alldata['date'].str.replace(r'(\d+)(st|nd|rd|th)', r'\1', regex=True)
+        alldata['date'] = pd.to_datetime(alldata['date'], format='%a %d %b %Y', errors='coerce')
+        alldata.sort_values(by= 'date', ascending=False)
+
         alldata.to_csv(f'datasets/mp_exp_csv/{mp_name}.csv',index = False)
 
-if __name__ == "__main__":
-    
-        
-    # create all individual csv for ever mp 
-    expense = 'row align-items-center text-center pt-1 pb-1'
-     
-    lastrow =  'row border-bottom align-items-center text-center pt-1 pb-1'
-    
-    create_csv(expense, lastrow)
-    
-    #create a combined data set.
-    data_path = 'datasets/mp_exp_csv'
-
-    files = os.listdir(data_path)
-
-    #combine all files in the list
-    combined_expenses = pd.concat([pd.read_csv(f'datasets/mp_exp_csv/{fi}') for fi in files ])
-    #export to csv
-    combined_expenses.to_csv( 'datasets/combined_expenses.csv', index=False)
-  
-
-
-
+        return alldata
 
