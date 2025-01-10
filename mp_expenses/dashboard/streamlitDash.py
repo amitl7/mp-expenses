@@ -8,63 +8,140 @@ streamlit run "/Users/amitlandge/Box Sync/code/mp_expenses/main.py"
 """
 #from pandas.core.indexes.base import Index
 import streamlit as st
+# Set page config must be the first st command
+st.set_page_config(page_title="MP Expenses Dashboard", layout="wide")
+
+# Import other libraries
 import pandas as pd
 import altair as alt
+import os
+import plotly.express as px
 
-#''' altair encodings for graphs https://altair-viz.github.io/user_guide/encoding.html '''
+# Get the directory of the current script
+current_dir = os.getcwd()
+print(f"Current Directory: {current_dir}")
 
-### import all of the data
-combined_expenses = pd.read_csv('datasets/combined_expenses.csv', low_memory=(False))
+# Get the parent directory
+parent_dir = os.path.dirname(current_dir)
+print(f"Parent Directory: {parent_dir}")
+
+csv_path = os.path.join(parent_dir, 'datasets', 'combined_expenses.csv')
+print("CSV Path:", csv_path)
+abs_path = '/Users/amitlandge/Library/CloudStorage/Box-Box/code/mp-expenses/mp_expenses/datasets/combined_expenses.csv'
+
+
+
+mp_map = pd.read_csv('/Users/amitlandge/Library/CloudStorage/Box-Box/code/mp-expenses/mp_expenses/datasets/mp_map.csv')
+
+@st.cache_data
+def load_data(location):
+    df = pd.read_csv(location)
+    return df
+
+combined_expenses = load_data(abs_path)
 combined_expenses['id'] = combined_expenses['id'].astype(str)
 combined_expenses['year'] = pd.DatetimeIndex(combined_expenses['date']).year
-
-mp_map = pd.read_csv('datasets/mp_map.csv')
-###  ----------------------
 combined_expenses['amount'] = combined_expenses['amount'].str.replace(',','')
 combined_expenses['amount'] = combined_expenses['amount'].astype(float)
-combined_expenses['year'] = pd.DatetimeIndex(combined_expenses['date']).year
+
 
 ##combine map and data together
 alldata = pd.merge(left = combined_expenses, right = mp_map, left_on= 'name', right_on= 'name')
 # aggregate data
 byparty = alldata.groupby(['year','party'])['amount'].sum()
-
-def main():
-    st.title('Mp Expenses Visualised')
-
-    ### ------ sidebar ------
-    st.sidebar.title("Select options")
-
-    option = st.sidebar.selectbox("Select View", ('Overall Summary','By party','By MP'))
-    st.header(option)
-
-    if option == 'Overall Summary': 
-        overall_summary()
-
-### ------ PAGES ------
-
-def overall_summary():   
-    years = alldata.year.unique()
-    unique_years = st.sidebar.selectbox("Select Year", years)
-    st.write('hi')
-
-    byparty = alldata.groupby(['year','party'], as_index = False)['amount'].sum()
-    partylist = ['Conservative', 'Labour','Liberal Democrat','Green Party','Scottish National Party']
-    byparty['Aggregateparty'] = byparty.party.map( lambda x: x if x in partylist else 'Other')
-
-    chart = alt.Chart(byparty.reset_index()
- #                      ).transform_fold(partynames).mark_line().encode( 
-#transform_fold is used to convert between long form and wide form data https://altair-viz.github.io/user_guide/data.html#data-long-vs-wide
-                    ).mark_bar().encode(
-            alt.X('year:O'),
-            alt.Y('amount:Q'),
-            color='Aggregateparty:N',
-        ).interactive()
-    
-  
-
-    st.altair_chart(chart, use_container_width=True)
+#### need to edit all below variables
+# Set up page configuration
 
 
-if __name__ == "__main__":
-    main()
+# Sidebar
+st.sidebar.title("Filters")
+
+party = ["All"] + sorted(alldata['party'].unique().tolist())
+selected_party = st.sidebar.selectbox("Select Constituency", party, index=0)
+
+type = ["All"] + sorted(alldata['type'].unique().tolist())
+selected_type = st.sidebar.selectbox("Select Category", type, index=0)
+
+sub_type = ["All"] + sorted(alldata['sub_type'].unique().tolist())
+selected_subtype= st.sidebar.selectbox("Select Sub Type", sub_type, index=0)
+
+# Modify the filtering logic to only filter when not "All"
+filtered_df = alldata.copy()
+
+if selected_party != "All":
+    filtered_df = filtered_df[filtered_df['party'] == selected_party]
+if selected_type != "All":
+    filtered_df = filtered_df[filtered_df['type'] == selected_type]
+if selected_subtype != "All":
+    filtered_df = filtered_df[filtered_df['sub_type'] == selected_subtype]
+
+
+# Main area
+st.title("MP Expenses Claimed")
+st.subheader("Spending Trends by Political Parties")
+
+# Define the major parties we want to show
+major_parties = ['Conservative', 'Labour', 'Scottish National Party', 'Liberal Democrats', 'Others']
+
+# Create a copy of filtered_df and modify the party column
+party_data = filtered_df.copy()
+# Replace all other parties with 'Others'
+party_data['party'] = party_data['party'].apply(lambda x: x if x in major_parties[:4] else 'Others')
+
+# Group by year and party
+party_year_spending = (party_data
+                      .groupby(['year', 'party'])['amount']
+                      .sum()
+                      .reset_index())
+
+# Create the stacked area chart
+party_trend_fig = px.area(party_year_spending, 
+                         x='year', 
+                         y='amount',
+                         color='party',
+                         title='Spending Trends by Political Parties',
+                         labels={'year': 'Year',
+                                'amount': 'Total Amount (£)',
+                                'party': 'Political Party'},
+                         height=500,
+                         # Set custom color scheme
+                         color_discrete_map={
+                             'Conservative': '#0087DC',    # Conservative blue
+                             'Labour': '#DC241F',          # Labour red
+                             'Scottish National Party': '#FDF38E',  # SNP yellow
+                             'Liberal Democrats': '#FDBB30',  # Lib Dem orange
+                             'Others': '#808080'           # Grey for others
+                         },
+                         category_orders={"party": major_parties})  # Force order in legend
+
+# Customize the layout
+party_trend_fig.update_layout(
+    xaxis_title="Year",
+    yaxis_title="Total Amount (£)",
+    showlegend=True,
+    legend_title="Political Parties",
+    xaxis=dict(
+        tickmode='linear',
+        dtick=1
+    )
+)
+
+# Update line and fill properties
+party_trend_fig.update_traces(
+    mode='lines',
+    line=dict(width=2),
+    stackgroup='one'
+)
+
+# Display the chart
+st.plotly_chart(party_trend_fig, use_container_width=True)
+# Bar Chart
+st.subheader("Expenses Overview")
+fig = px.bar(filtered_df, x='sub_type', y='amount', color='sub_type',
+             labels={'sub_type': 'Subcategory', 'amount': 'Amount'},
+             title="Expenses by Subcategory")
+st.plotly_chart(fig)
+
+# Data Table
+st.subheader("Data Table")
+st.write(filtered_df)
