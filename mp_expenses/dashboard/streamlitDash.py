@@ -30,43 +30,48 @@ print("CSV Path:", csv_path)
 abs_path = '/Users/amitlandge/Library/CloudStorage/Box-Box/code/mp-expenses/mp_expenses/datasets/combined_expenses.csv'
 
 
-
 mp_map = pd.read_csv('/Users/amitlandge/Library/CloudStorage/Box-Box/code/mp-expenses/mp_expenses/datasets/mp_map.csv')
-
+major_parties = ['Conservative', 'Labour', 'Scottish National Party', 'Liberal Democrats', 'Others']
 @st.cache_data
 def load_data(location):
+    
     df = pd.read_csv(location)
+    df['id'] = df['id'].astype(str)
+    df['year'] = pd.DatetimeIndex(df['date']).year
+    df['amount'] = df['amount'].str.replace(',','')
+    df['amount'] = df['amount'].astype(float)
+
     return df
-
-combined_expenses = load_data(abs_path)
-combined_expenses['id'] = combined_expenses['id'].astype(str)
-combined_expenses['year'] = pd.DatetimeIndex(combined_expenses['date']).year
-combined_expenses['amount'] = combined_expenses['amount'].str.replace(',','')
-combined_expenses['amount'] = combined_expenses['amount'].astype(float)
-
-
 ##combine map and data together
-alldata = pd.merge(left = combined_expenses, right = mp_map, left_on= 'name', right_on= 'name')
-# aggregate data
-byparty = alldata.groupby(['year','party'])['amount'].sum()
-#### need to edit all below variables
-# Set up page configuration
+@st.cache_data
+def alldata():
+    alldata = pd.merge(left = load_data(abs_path), right = mp_map, left_on= 'name', right_on= 'name')
+    alldata['party'] = alldata['party_group'].apply(lambda x: x if x in major_parties[:4] else 'Others')
+    return alldata
 
 
 # Sidebar
 st.sidebar.title("Filters")
 
-party = ["All"] + sorted(alldata['party'].unique().tolist())
+if st.sidebar.button("Clear All Filters"):
+    # Reset all selectboxes to "All" using session state
+    st.session_state.party = "All"
+    st.session_state.type = "All"
+    st.session_state.sub_type = "All"
+    # Rerun the app to apply the reset
+    st.rerun()
+
+party = ["All"] + sorted(alldata()['party'].unique().tolist())
 selected_party = st.sidebar.selectbox("Select Constituency", party, index=0)
 
-type = ["All"] + sorted(alldata['type'].unique().tolist())
+type = ["All"] + sorted(alldata()['type'].unique().tolist())
 selected_type = st.sidebar.selectbox("Select Category", type, index=0)
 
-sub_type = ["All"] + sorted(alldata['sub_type'].unique().tolist())
+sub_type = ["All"] + sorted(alldata()['sub_type'].unique().tolist())
 selected_subtype= st.sidebar.selectbox("Select Sub Type", sub_type, index=0)
 
 # Modify the filtering logic to only filter when not "All"
-filtered_df = alldata.copy()
+filtered_df = alldata().copy()    
 
 if selected_party != "All":
     filtered_df = filtered_df[filtered_df['party'] == selected_party]
@@ -80,19 +85,22 @@ if selected_subtype != "All":
 st.title("MP Expenses Claimed")
 st.subheader("Spending Trends by Political Parties")
 
-# Define the major parties we want to show
-major_parties = ['Conservative', 'Labour', 'Scottish National Party', 'Liberal Democrats', 'Others']
-
-# Create a copy of filtered_df and modify the party column
-party_data = filtered_df.copy()
-# Replace all other parties with 'Others'
-party_data['party'] = party_data['party'].apply(lambda x: x if x in major_parties[:4] else 'Others')
-
 # Group by year and party
-party_year_spending = (party_data
+party_year_spending = (alldata()
                       .groupby(['year', 'party'])['amount']
                       .sum()
                       .reset_index())
+
+type_year_spending = (alldata()
+                      .groupby(['type', 'year'])['amount']
+                      .sum()
+                      .reset_index())
+
+miscellaneous_year_spending = (alldata()
+                        .query('type == "Miscellaneous Expenses"')
+                        .groupby(['sub_type', 'year'])['amount']
+                        .sum()
+                        .reset_index())
 
 # Create the stacked area chart
 party_trend_fig = px.area(party_year_spending, 
@@ -137,10 +145,100 @@ party_trend_fig.update_traces(
 st.plotly_chart(party_trend_fig, use_container_width=True)
 # Bar Chart
 st.subheader("Expenses Overview")
-fig = px.bar(filtered_df, x='sub_type', y='amount', color='sub_type',
-             labels={'sub_type': 'Subcategory', 'amount': 'Amount'},
-             title="Expenses by Subcategory")
+
+fig = px.bar(type_year_spending, x='year', y='amount', color='type',
+             labels={'type': 'Subcategory', 'amount': 'Amount GBP'},
+             title="Expenses by Type")
+
+def year_spending(df):
+
+    yearly_totals = df.groupby('year')['amount'].sum().round(0)
+    yearly_totals_millions = yearly_totals / 1_000_000
+    year = df['year'].unique()
+    return yearly_totals_millions, yearly_totals, year
+
+# Add annotations for yearly totals
+yearly_totals = year_spending(type_year_spending)[1]
+
+for year in yearly_totals.index:
+    fig.add_annotation(
+        x=year,
+        y=yearly_totals[year],  # Using yearly_totals instead of millions
+        text=f'£{year_spending(type_year_spending)[0][year]:,.0f}M',  # Format with commas, no 'M' suffix
+        showarrow=False,
+        yshift=10,
+        font=dict(size=12, weight='bold')
+    )
+
+# Customize the layout
+fig.update_layout(
+    barmode='stack',
+    xaxis_tickangle=0,
+    legend_title_text='Subcategory',
+    showlegend=True,
+    yaxis_title='Amount GBP',
+    xaxis_title='Year',
+    xaxis=dict(
+        tickmode='array',
+        tickvals=year_spending(type_year_spending)[2],  # Show all years
+        dtick=1  # Force display of each year
+    )
+)
+
+# Add hover template
+fig.update_traces(
+    hovertemplate="<br>".join([
+        "Year: %{x}",
+        "Amount: £%{y:,.0f}",
+        "Category: %{customdata}<br>"
+    ]),
+    customdata=type_year_spending['type']
+)
+
 st.plotly_chart(fig)
+
+miscellanous_fig = px.bar(miscellaneous_year_spending, x='year', y='amount', color='sub_type',
+             labels={'sub_type': 'Sub type', 'amount': 'Amount GBP'},
+             title="Miscellaneous Expenses by Subcategory")
+
+yearly_totals = year_spending(miscellaneous_year_spending)[1]
+
+for year in yearly_totals.index:
+    miscellanous_fig.add_annotation(
+        x=year,
+        y=yearly_totals[year],  # Using yearly_totals instead of millions
+        text=f'£{(year_spending(miscellaneous_year_spending)[1])[year]:,.0f}k',  # Format with commas, no 'M' suffix
+        showarrow=False,
+        yshift=10,
+        font=dict(size=12, weight='bold')
+    )
+
+miscellanous_fig.update_layout(
+    barmode='stack',
+    xaxis_tickangle=0,
+    legend_title_text='Miscellaneous details',
+    showlegend=True,
+    yaxis_title='Amount GBP',
+    xaxis_title='Year',
+    xaxis=dict(
+        tickmode='array',
+        tickvals=year_spending(miscellaneous_year_spending)[2],  # Show all years
+        dtick=1  # Force display of each year
+    )
+)
+
+# Add hover template
+miscellanous_fig.update_traces(
+    hovertemplate="<br>".join([
+        "Year: %{x}",
+        "Amount: £%{y:,.0f}",
+        "Category: %{customdata}<br>"
+    ]),
+    customdata=miscellaneous_year_spending['sub_type']
+)
+
+st.plotly_chart(miscellanous_fig)
+
 
 # Data Table
 st.subheader("Data Table")
